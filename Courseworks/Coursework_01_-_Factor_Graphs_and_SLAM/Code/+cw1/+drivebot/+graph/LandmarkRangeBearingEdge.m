@@ -58,10 +58,13 @@ classdef LandmarkRangeBearingEdge < g2o.core.BaseBinaryEdge
             %   Compute the initial estimate of the landmark given the
             %   platform pose and observation.
 
-            warning('LandmarkRangeBearingEdge.initialEstimate: implement')
+            x = obj.edgeVertices{1}.x;
+            r = obj.z(1);
+            beta = obj.z(2);
 
-            lx = obj.edgeVertices{1}.x(1:2);
-            obj.edgeVertices{2}.setEstimate(lx);
+            phi = x(3) + beta;
+            lxy = x(1:2) + r * [cos(phi); sin(phi)];
+            obj.edgeVertices{2}.setEstimate(lxy);
         end
         
         function computeError(obj)
@@ -74,9 +77,16 @@ classdef LandmarkRangeBearingEdge < g2o.core.BaseBinaryEdge
             %   Compute the value of the error, which is the difference
             %   between the predicted and actual range-bearing measurement.
 
-            warning('LandmarkRangeBearingEdge.computeError: implement')
-           
-            obj.errorZ = zeros(2, 1);
+            x = obj.edgeVertices{1}.estimate();
+            l = obj.edgeVertices{2}.estimate();
+
+            dx = l(1) - x(1);
+            dy = l(2) - x(2);
+            r = sqrt(dx^2 + dy^2);
+            h = [r; atan2(dy, dx) - x(3)];
+
+            obj.errorZ = obj.z - h;
+            obj.errorZ(2) = g2o.stuff.normalize_theta(obj.errorZ(2));
         end
         
         function linearizeOplus(obj)
@@ -90,11 +100,21 @@ classdef LandmarkRangeBearingEdge < g2o.core.BaseBinaryEdge
             %   the vertex.
             %
 
-            warning('LandmarkRangeBearingEdge.linearizeOplus: implement')
+            x = obj.edgeVertices{1}.x;
+            l = obj.edgeVertices{2}.x;
 
-            obj.J{1} = eye(2, 3);
-            
-            obj.J{2} = eye(2);
+            dx = l(1) - x(1);
+            dy = l(2) - x(2);
+            r2 = dx^2 + dy^2;
+            r = sqrt(r2);
+
+            % Jacobian wrt platform state x=[x;y;theta]
+            obj.J{1} = [dx/r dy/r 0; ...
+                -dy/r2 dx/r2 1];
+
+            % Jacobian wrt landmark state l=[lx;ly]
+            obj.J{2} = [-dx/r -dy/r; ...
+                dy/r2 -dx/r2];
         end        
     end
 end
