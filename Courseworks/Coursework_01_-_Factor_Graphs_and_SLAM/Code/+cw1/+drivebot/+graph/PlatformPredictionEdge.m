@@ -60,10 +60,16 @@ classdef PlatformPredictionEdge < g2o.core.BaseBinaryEdge
             %   an estimate of the platform at time x_(k) and the control
             %   input u_(k+1)
 
-            warning('PlatformPredictionEdge.initialEstimate: implement')
+            xk = obj.edgeVertices{1}.x;
+            theta = xk(3);
+            M = obj.dT * [cos(theta) -sin(theta) 0; ...
+                sin(theta) cos(theta) 0; ...
+                0 0 1];
 
-            % Compute the posterior assming no noise
-            obj.edgeVertices{2}.x = zeros(3, 1);
+            % Compute the posterior assuming no process noise
+            xkp1 = xk + M * obj.z;
+            xkp1(3) = g2o.stuff.normalize_theta(xkp1(3));
+            obj.edgeVertices{2}.x = xkp1;
         end
         
         function computeError(obj)
@@ -79,9 +85,16 @@ classdef PlatformPredictionEdge < g2o.core.BaseBinaryEdge
             %   equation has to be rearranged to make the error the subject
             %   of the formulat
                        
-            warning('PlatformPredictionEdge.computeError: implement')
+            xk = obj.edgeVertices{1}.x;
+            xkp1 = obj.edgeVertices{2}.x;
 
-            obj.errorZ = 0;
+            theta = xk(3);
+            M = obj.dT * [cos(theta) -sin(theta) 0; ...
+                sin(theta) cos(theta) 0; ...
+                0 0 1];
+
+            obj.errorZ = M \ (xkp1 - xk) - obj.z;
+            obj.errorZ(3) = g2o.stuff.normalize_theta(obj.errorZ(3));
         end
         
         % Compute the Jacobians
@@ -97,11 +110,23 @@ classdef PlatformPredictionEdge < g2o.core.BaseBinaryEdge
             %   respect to both of them must be computed.
             %
 
-            warning('PlatformPredictionEdge.linearizeOplus: implement')
+            xk = obj.edgeVertices{1}.x;
+            xkp1 = obj.edgeVertices{2}.x;
 
-            obj.J{1} = -eye(3);
+            theta = xk(3);
+            invM = (1 / obj.dT) * [cos(theta) sin(theta) 0; ...
+                -sin(theta) cos(theta) 0; ...
+                0 0 1];
 
-            obj.J{2} = eye(3);
+            deltaX = xkp1 - xk;
+            dinvMdtheta = (1 / obj.dT) * [-sin(theta) cos(theta) 0; ...
+                -cos(theta) -sin(theta) 0; ...
+                0 0 0];
+
+            obj.J{1} = -invM;
+            obj.J{1}(:, 3) = obj.J{1}(:, 3) + dinvMdtheta * deltaX;
+
+            obj.J{2} = invM;
         end
     end    
 end
