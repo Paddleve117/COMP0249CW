@@ -11,6 +11,10 @@ dT = 1;
 sigmaR = 100;
 sigmaQ = 0.01;
 
+% Task 2: GPS dropout range (set to [450 550] or [900 1000])
+dropoutStart = 900;
+dropoutEnd   = 1000;
+
 % Work out the state transition equations
 F0=[1 dT; 0 1];
 Q0=[dT^3/3 dT^2/2;dT^2/2 dT] * sigmaQ;
@@ -99,6 +103,15 @@ for n = 1 : numberOfTimeSteps
     % Add the edge to the graph; the graph now knows we have these edges
     % which need to be added
     graph.addEdge(e);
+
+    % Create the measurement edge (skip during dropout)
+    if ~(n >= dropoutStart && n <= dropoutEnd)
+        e = ObjectGPSMeasurementEdge();
+        e.setVertex(1, v{n});
+        e.setMeasurement(z(:,n));
+        e.setInformation(omegaR);
+        graph.addEdge(e);
+    end
 end
 
 % Graph construction complete
@@ -106,6 +119,25 @@ end
 % Initialise the optimization. This is done here because it's a bit
 % expensive and if we cache it, we can call optimize multiple times later.
 graph.initializeOptimization();
+
+% Optimize the graph (single final run)
+tic
+graph.optimize(5000);
+toc
+
+% Task 2: compute det(P) over time AFTER final optimize
+[X, PX] = graph.computeMarginals();
+detP = zeros(1, numberOfTimeSteps);
+for n = 1 : numberOfTimeSteps
+    detP(n) = det(full(PX{n}));
+end
+
+figure;
+plot(detP, 'LineWidth', 1.5);
+xlabel('Time step');
+ylabel('det(P)');
+title(sprintf('Dropout %d-%d', dropoutStart, dropoutEnd));
+grid on
 
 % Create some output as we go
 x = zeros(4, numberOfTimeSteps);
